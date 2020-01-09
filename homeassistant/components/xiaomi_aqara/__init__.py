@@ -5,6 +5,7 @@ import logging
 import voluptuous as vol
 from xiaomi_gateway import XiaomiGatewayDiscovery
 
+from homeassistant import config_entries, core
 from homeassistant.components.discovery import SERVICE_XIAOMI_GW
 from homeassistant.const import (
     ATTR_BATTERY_LEVEL,
@@ -117,7 +118,106 @@ CONFIG_SCHEMA = vol.Schema(
 )
 
 
-def setup(hass, config):
+async def async_setup(hass, config):
+    """Set up the Aqara platform."""
+    conf = config.get(DOMAIN)
+    if conf is None:
+        conf = {}
+
+    hass.data[DOMAIN] = {}
+
+    _LOGGER.info(config)
+
+    # TODO
+
+    return True
+
+
+async def async_setup_entry(
+    hass: core.HomeAssistant, entry: config_entries.ConfigEntry
+):
+    """Set up a gateway from a config entry."""
+
+    _LOGGER.info("async_setup_entry")
+    _LOGGER.info(entry.as_dict())
+
+    async def xiaomi_gw_discovered(service, discovery_info):
+        """Perform action when Xiaomi Gateway device(s) has been found."""
+        # We don't need to do anything here, the purpose of Home Assistant's
+        # discovery service is to just trigger loading of this
+        # component, and then its own discovery process kicks in.
+
+    discovery.listen(hass, SERVICE_XIAOMI_GW, xiaomi_gw_discovered)
+
+    gateways_discovery = hass.data[PY_XIAOMI_GATEWAY] = XiaomiGatewayDiscovery(
+        hass.add_job, [], "any"
+    )
+
+    gateways_discovery.listen()
+
+    _LOGGER.debug("Gateways discovered. Listening for broadcasts")
+
+    for component in ["binary_sensor", "sensor", "switch", "light", "cover", "lock"]:
+        discovery.load_platform(hass, component, DOMAIN, {}, config)
+
+    def stop_xiaomi(event):
+        """Stop Xiaomi Socket."""
+        _LOGGER.info("Shutting down Xiaomi Hub")
+        xiaomi.stop_listen()
+
+    hass.bus.listen_once(EVENT_HOMEASSISTANT_STOP, stop_xiaomi)
+
+    return True
+
+    host = entry.data["host"]
+    config = hass.data[DATA_CONFIGS].get(host)
+
+    if config is None:
+        allow_unreachable = DEFAULT_ALLOW_UNREACHABLE
+        allow_groups = DEFAULT_ALLOW_HUE_GROUPS
+    else:
+        allow_unreachable = config[CONF_ALLOW_UNREACHABLE]
+        allow_groups = config[CONF_ALLOW_HUE_GROUPS]
+
+    bridge = HueBridge(hass, entry, allow_unreachable, allow_groups)
+
+    if not await bridge.async_setup():
+        return False
+
+    hass.data[DOMAIN][host] = bridge
+    config = bridge.api.config
+
+    # For backwards compat
+    if entry.unique_id is None:
+        hass.config_entries.async_update_entry(
+            entry, unique_id=normalize_bridge_id(config.bridgeid)
+        )
+
+    device_registry = await dr.async_get_registry(hass)
+    device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        connections={(dr.CONNECTION_NETWORK_MAC, config.mac)},
+        identifiers={(DOMAIN, config.bridgeid)},
+        manufacturer="Signify",
+        name=config.name,
+        model=config.modelid,
+        sw_version=config.swversion,
+    )
+
+    if config.swupdate2_bridge_state == "readytoinstall":
+        err = "Please check for software updates of the bridge in the Philips Hue App."
+        _LOGGER.warning(err)
+
+    return True
+
+
+async def async_unload_entry(hass, entry):
+    """Unload a config entry."""
+    bridge = hass.data[DOMAIN].pop(entry.data["host"])
+    return await bridge.async_reset()
+
+
+def setup___(hass, config):
     """Set up the Xiaomi component."""
     gateways = []
     interface = "any"
@@ -231,6 +331,7 @@ class XiaomiDevice(Entity):
         self._state = None
         self._is_available = True
         self._sid = device["sid"]
+        self._model = device["model"]
         self._name = f"{device_type}_{self._sid}"
         self._type = device_type
         self._write_to_hub = xiaomi_hub.write_to_hub
@@ -240,6 +341,8 @@ class XiaomiDevice(Entity):
         self._xiaomi_hub = xiaomi_hub
         self.parse_data(device["data"], device["raw_data"])
         self.parse_voltage(device["data"])
+
+        _LOGGER.info(device)
 
         if hasattr(self, "_data_key") and self._data_key:  # pylint: disable=no-member
             self._unique_id = "{}{}".format(
@@ -280,6 +383,22 @@ class XiaomiDevice(Entity):
     def device_state_attributes(self):
         """Return the state attributes."""
         return self._device_state_attributes
+
+    @property
+    def device_info(self):
+        _LOGGER.info("getting device info!!")
+        _LOGGER.info((DOMAIN, self._sid))
+        a = {
+            "identifiers": {
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, self._sid)
+            },
+            "name": self._model,
+            "manufacturer": "Xiaomi",
+            "model": self._model,
+            "via_device": (DOMAIN, self._xiaomi_hub.sid),
+        }
+        _LOGGER.info(a)
 
     @callback
     def _async_set_unavailable(self, now):

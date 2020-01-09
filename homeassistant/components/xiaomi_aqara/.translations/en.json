@@ -1,0 +1,34 @@
+{
+    "config": {
+        "abort": {
+            "all_configured": "All Xiaomi Aqara gateways are already configured",
+            "already_configured": "Bridge is already configured",
+            "already_in_progress": "Config flow for bridge is already in progress.",
+            "cannot_connect": "Unable to connect to the bridge",
+            "discover_timeout": "Unable to discover Hue bridges",
+            "no_gateways": "No Xiaomi Aqara gateways discovered",
+            "not_hue_bridge": "Not a Hue bridge",
+            "unknown": "Unknown error occurred"
+        },
+        "error": {
+            "linking": "Unknown linking error occurred.",
+            "register_failed": "Failed to register, please try again"
+        },
+        "step": {
+            "init": {
+                "data": {
+                    "host": "IP address"
+                },
+                "title": "Pick a default Aqara gateway"
+            },
+            "key": {
+                "data": {
+                    "key": "Key"
+                },
+                "description": "You'll be able to extract the key from the mobile applications following this tutorial: https://www.domoticz.com/wiki/Xiaomi_Gateway_(Aqara)#Adding_the_Xiaomi_Gateway_to_Domoticz",
+                "title": "Gateway key"
+            }
+        },
+        "title": "Xiaomi Aqara"
+    }
+}
